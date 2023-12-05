@@ -1,38 +1,53 @@
-import bluetooth
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <termios.h>
 
-# Scan for Bluetooth adapters
-def scan_bluetooth_adapters():
-    print("Scanning for Bluetooth adapters...")
-    try:
-        adapters = bluetooth.discover_devices()
-        for adapter in adapters:
-            print(f"Found adapter: {adapter}")
-            # Use the adapter address to connect to specific devices
-    except Exception as e:
-        print(f"Error scanning for adapters: {e}")
+int main() {
+    int serialPort;
+    struct termios tty;
+    char buffer[100];
 
-# Connect to an accelerometer sensor
-def connect_accelerometer(adapter_address):
-    try:
-        # Establish socket connection with the accelerometer
-        sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
-        sock.connect((adapter_address, 1))
-        print(f"Connected to accelerometer at {adapter_address}")
+    // Replace "/dev/ttyUSB0" with the actual path of your serial port
+    serialPort = open("/dev/ttyUSB0", O_RDWR);
 
-        # Read accelerometer data
-        while True:
-            data = sock.recv(1024)
-            print(f"Accelerometer data: {data}")
-    except Exception as e:
-        print(f"Error connecting to accelerometer: {e}")
-        sock.close()
+    if (serialPort == -1) {
+        perror("Error opening serial port");
+        return 1;
+    }
 
-if _name_ == "_main_":
-    # Scan for Bluetooth adapters
-    scan_bluetooth_adapters()
+    if (tcgetattr(serialPort, &tty) != 0) {
+        perror("Error getting serial port attributes");
+        close(serialPort);
+        return 1;
+    }
 
-    # Select an adapter to connect to
-    adapter_address = input("Enter the adapter address to connect to: ")
+    cfsetospeed(&tty, B9600);  // Set your baud rate
+    cfsetispeed(&tty, B9600);
 
-    # Connect to the accelerometer sensor
-    connect_accelerometer(adapter_address)
+    tty.c_cflag |= (CLOCAL | CREAD);  // Enable receiver and ignore modem control lines
+    tty.c_cflag &= ~PARENB;           // No parity bit
+    tty.c_cflag &= ~CSTOPB;           // 1 stop bit
+    tty.c_cflag &= ~CSIZE;            // Clear data size bits
+    tty.c_cflag |= CS8;               // 8 bits per byte
+
+    if (tcsetattr(serialPort, TCSANOW, &tty) != 0) {
+        perror("Error setting serial port attributes");
+        close(serialPort);
+        return 1;
+    }
+
+    while (1) {
+        ssize_t bytesRead = read(serialPort, buffer, sizeof(buffer));
+
+        if (bytesRead > 0) {
+            buffer[bytesRead] = '\0';  // Null-terminate the received data
+            printf("Received data: %s\n", buffer);
+        }
+    }
+
+    close(serialPort);
+
+    return 0;
+}
